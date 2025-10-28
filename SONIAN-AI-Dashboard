@@ -1,0 +1,312 @@
+<?php
+/**
+ * SONIAN AI - Fee Distribution Dashboard
+ * 
+ * This is the main index.php file for the SONIAN AI application.
+ * It provides a professional dashboard for inputting volumes from Cybersonian exchange pairs
+ * (BTC_USDT, ETH_USDT, BNB_USDT, XRP_USDT) and automatically fetches the 24h volume from
+ * the SONIAN Solana token via DexScreener API.
+ * 
+ * Users can input the total fees from "Perisa" source, add/edit Solana wallets with their shares,
+ * and compute the fee distribution proportionally based on volumes.
+ * 
+ * Distribution logic:
+ * - Total Volume = Sum of Cybersonian pair volumes + Solana volume
+ * - Allocation to each Cybersonian pair = (pair_volume / total_volume) * total_fees
+ * - Allocation to Solana = (solana_volume / total_volume) * total_fees
+ * - Then, distribute Solana allocation to wallets based on their share percentages.
+ * 
+ * Features:
+ * - Auto-fetch Solana volume using cURL.
+ * - Form to add/save Solana wallets (stored in a simple JSON file for persistence).
+ * - Compute and display results in a table.
+ * - Download results as CSV.
+ * 
+ * Requirements: PHP 7+, cURL enabled. Create a 'data' folder with write permissions for wallets.json.
+ * 
+ * Next files: 
+ * - (After this, ask for config.php for API keys if needed, but not required here)
+ * - distribute.php for computation logic (can be included).
+ * 
+ * Save this as index.php and upload to your server.
+ */
+
+// Start session for any future use (e.g., user auth)
+session_start();
+
+// Function to fetch Solana volume from DexScreener API
+function fetchSolanaVolume() {
+    $apiUrl = 'https://api.dexscreener.com/latest/dex/tokens/7aWo4u6iP4dXKvJCvahZL51a3ijL4PFM4RXZDnPdpump';
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $apiUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // For testing; enable in production
+    $response = curl_exec($ch);
+    curl_close($ch);
+    
+    if ($response === false) {
+        return 0; // Default to 0 on error
+    }
+    
+    $data = json_decode($response, true);
+    if (isset($data['pairs'][0]['volume']['h24'])) {
+        return floatval($data['pairs'][0]['volume']['h24']);
+    }
+    return 0;
+}
+
+// Load Solana wallets from JSON file
+function loadWallets() {
+    $file = 'data/wallets.json';
+    if (!file_exists($file)) {
+        // Default example wallets (replace with real ones)
+        $defaultWallets = [
+            ['address' => 'ExampleWallet1', 'share' => 30.0],
+            ['address' => 'ExampleWallet2', 'share' => 25.0],
+            ['address' => 'ExampleWallet3', 'share' => 20.0],
+            ['address' => 'ExampleWallet4', 'share' => 15.0],
+            ['address' => 'ExampleWallet5', 'share' => 10.0]
+        ];
+        file_put_contents($file, json_encode($defaultWallets));
+    }
+    $json = file_get_contents($file);
+    return json_decode($json, true) ?? [];
+}
+
+// Save wallets to JSON
+function saveWallets($wallets) {
+    $file = 'data/wallets.json';
+    file_put_contents($file, json_encode($wallets, JSON_PRETTY_PRINT));
+}
+
+// Handle form submissions
+$wallets = loadWallets();
+$solanaVolume = fetchSolanaVolume();
+
+// Add new wallet
+if (isset($_POST['add_wallet'])) {
+    $newAddress = trim($_POST['wallet_address']);
+    $newShare = floatval($_POST['wallet_share']);
+    if (!empty($newAddress) && $newShare > 0) {
+        $wallets[] = ['address' => $newAddress, 'share' => $newShare];
+        // Normalize shares to 100%
+        $totalShare = array_sum(array_column($wallets, 'share'));
+        if ($totalShare > 0) {
+            foreach ($wallets as &$w) {
+                $w['share'] = ($w['share'] / $totalShare) * 100;
+            }
+        }
+        saveWallets($wallets);
+    }
+}
+
+// Delete wallet
+if (isset($_POST['delete_wallet'])) {
+    $index = intval($_POST['wallet_index']);
+    if (isset($wallets[$index])) {
+        unset($wallets[$index]);
+        $wallets = array_values($wallets);
+        saveWallets($wallets);
+    }
+}
+
+// Compute distribution
+$results = [];
+if (isset($_POST['compute'])) {
+    $totalFees = floatval($_POST['total_fees']);
+    $btcVol = floatval($_POST['btc_volume']);
+    $ethVol = floatval($_POST['eth_volume']);
+    $bnbVol = floatval($_POST['bnb_volume']);
+    $xrpVol = floatval($_POST['xrp_volume']);
+    
+    $cybTotalVol = $btcVol + $ethVol + $bnbVol + $xrpVol;
+    $grandTotalVol = $cybTotalVol + $solanaVolume;
+    
+    if ($grandTotalVol > 0 && $totalFees > 0) {
+        // Cybersonian allocations
+        $results['BTC_USDT'] = ($btcVol / $grandTotalVol) * $totalFees;
+        $results['ETH_USDT'] = ($ethVol / $grandTotalVol) * $totalFees;
+        $results['BNB_USDT'] = ($bnbVol / $grandTotalVol) * $totalFees;
+        $results['XRP_USDT'] = ($xrpVol / $grandTotalVol) * $totalFees;
+        
+        // Solana total allocation
+        $solanaAlloc = ($solanaVolume / $grandTotalVol) * $totalFees;
+        
+        // Distribute to wallets
+        foreach ($wallets as $wallet) {
+            $walletKey = 'Solana_' . $wallet['address'];
+            $results[$walletKey] = ($wallet['share'] / 100) * $solanaAlloc;
+        }
+    }
+}
+
+// CSV Download
+if (isset($_POST['download_csv'])) {
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="sonian_fee_distribution.csv"');
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['Pair/Wallet', 'Allocation (USD)']);
+    if (!empty($results)) {
+        foreach ($results as $key => $value) {
+            fputcsv($output, [$key, number_format($value, 2)]);
+        }
+    }
+    fclose($output);
+    exit;
+}
+
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SONIAN AI - Fee Distribution Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .card { box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075); }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">SONIAN AI - Professional Fee Distribution System</h1>
+        
+        <!-- Solana Volume Display -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Solana SONIAN Volume (24h)</h5>
+                        <p class="card-text fs-4 text-success">$<?php echo number_format($solanaVolume, 2); ?></p>
+                        <small class="text-muted">Fetched from DexScreener API</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Wallet Management -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Solana Wallets (Holders)</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" name="wallet_address" placeholder="Wallet Address" required>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" step="0.01" class="form-control" name="wallet_share" placeholder="Share %" required>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" name="add_wallet" class="btn btn-primary w-100">Add Wallet</button>
+                            </div>
+                        </form>
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Wallet Address</th>
+                                    <th>Share (%)</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($wallets as $index => $wallet): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($wallet['address']); ?></td>
+                                    <td><?php echo number_format($wallet['share'], 2); ?>%</td>
+                                    <td>
+                                        <form method="post" style="display:inline;">
+                                            <input type="hidden" name="wallet_index" value="<?php echo $index; ?>">
+                                            <button type="submit" name="delete_wallet" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Input Form -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Input Volumes and Total Fees</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="post">
+                            <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label">Total Fees from Perisa (USD)</label>
+                                    <input type="number" step="0.01" class="form-control" name="total_fees" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">BTC_USDT Volume (24h USD)</label>
+                                    <input type="number" step="0.01" class="form-control" name="btc_volume" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">ETH_USDT Volume (24h USD)</label>
+                                    <input type="number" step="0.01" class="form-control" name="eth_volume" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">BNB_USDT Volume (24h USD)</label>
+                                    <input type="number" step="0.01" class="form-control" name="bnb_volume" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">XRP_USDT Volume (24h USD)</label>
+                                    <input type="number" step="0.01" class="form-control" name="xrp_volume" required>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button type="submit" name="compute" class="btn btn-success">Compute Distribution</button>
+                                <?php if (!empty($results)): ?>
+                                <button type="submit" name="download_csv" class="btn btn-info">Download CSV</button>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Results Table -->
+        <?php if (!empty($results)): ?>
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Fee Distribution Results</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Pair / Wallet</th>
+                                    <th>Allocation (USD)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($results as $key => $value): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($key); ?></td>
+                                    <td class="text-end fw-bold">$<?php echo number_format($value, 2); ?></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
