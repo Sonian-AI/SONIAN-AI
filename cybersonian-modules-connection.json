@@ -1,0 +1,68 @@
+{
+  "master-config.json",
+  "description": "Главен конфигурационен файл – свързва всички .json файлове за Cybersonian.com и SONIAN токена. Той е 'мостът' – реферира към другите файлове, управлява интеграцията (API, exchange, wallet, airdrop, metadata), и осигурява, че всичко е свързано. Използвай го като central hub за сайта.",
+  "content": {
+    "version": "1.0.0",
+    "token": {
+      "mint": "6q1GqCegiGUVQ9fbUNNPChBBJP5qMFRh36YA3Bh15xsS",
+      "symbol": "SONIAN",
+      "supply": 1000000000,
+      "decimals": 0
+    },
+    "exchange": {
+      "apiBase": "https://cybersonian.com/api/v1",
+      "apiKey": "YOUR_EXCHANGE_API_KEY_HERE",
+      "fee": 0.5,
+      "rewards": "50% to holders"
+    },
+    "files": {
+      "metadata": "./token-metadata.json",
+      "api": "./api-config.json",
+      "exchange": "./exchange-config.json",
+      "wallet": "./wallet-integration.json",
+      "airdrop": "./airdrop-config.json"
+    },
+    "integration": {
+      "bridge": {
+        "type": "Solana-Cybersonian",
+        "status": "active",
+        "endpoints": [
+          "/api/bridge/balance",
+          "/api/bridge/transfer",
+          "/api/bridge/buy-son ian",
+          "/api/bridge/stake",
+          "/api/bridge/kline"
+        ]
+      },
+      "connections": [
+        {
+          "from": "metadata",
+          "to": "exchange",
+          "link": "description in metadata updates exchange rates"
+        },
+        {
+          "from": "wallet",
+          "to": "airdrop",
+          "link": "wallet connects for airdrop claims"
+        },
+        {
+          "from": "api",
+          "to": "all",
+          "link": "API endpoints used by all files"
+        }
+      ]
+    },
+    "cybersonian": {
+      "site": "https://cybersonian.com",
+      "bridgeUrl": "https://cybersonian.com/api/bridge/sonian",
+      "feeWallet": "HBzX8bvy6dJSZNUSnFMDJsnqXvJrznLkKVhYUW1nFBMy",
+      "rewardsPool": "50% of fees redistributed"
+    },
+    "deployment": {
+      "rpc": "https://api.devnet.solana.com",
+      "env": "devnet",
+      "updateInterval": 3600 // 1 час
+    }
+  }
+}
+
