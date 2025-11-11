@@ -1,0 +1,15 @@
+{
+  "name": "sonian-token-metadata",
+  "version": "1.0.0",
+  "description": "Update SONIAN token metadata",
+  "main": "update-metadata.js",
+  "scripts": {
+    "start": "node update-metadata.js"
+  },
+  "dependencies": {
+    "@metaplex-foundation/js": "^0.19.4",
+    "@solana/spl-token": "^0.3.6",
+    "@solana/web3.js": "^1.66.2",
+    "bs58": "^4.0.1"
+  }
+}

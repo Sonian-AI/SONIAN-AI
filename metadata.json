@@ -1,0 +1,36 @@
+{
+  "name": "SONIAN AI Rewards Token",
+  "symbol": "SONIAN",
+  "description": "The official SONIAN AI Rewards token for Cybersonian Exchange. This token can only be used inside Cybersonian.com",
+  "seller_fee_basis_points": 0,
+  "image": "https://rose-important-mule-20.mypinata.cloud/ipfs/bafkreie5kgwlyjaj2f2yodm4ou4gw2a7hm4adhkc246zsljazzgivtpawe",
+  "attributes": [
+    {
+      "trait_type": "Utility",
+      "value": "Cybersonian Exchange"
+    },
+    {
+      "trait_type": "Reward System",
+      "value": "50% fee redistribution"
+    }
+  ],
+  "collection": {
+    "name": "Cybersonian Collection",
+    "family": "SONIAN AI"
+  },
+  "properties": {
+    "files": [
+      {
+        "uri": "https://rose-important-mule-20.mypinata.cloud/ipfs/bafkreie5kgwlyjaj2f2yodm4ou4gw2a7hm4adhkc246zsljazzgivtpawe",
+        "type": "image/jpg"
+      }
+    ],
+    "category": "image",
+    "creators": [
+      {
+        "address": "YOUR_SOLANA_ADDRESS_HERE",
+        "share": 100
+      }
+    ]
+  }
+}
